@@ -10,7 +10,6 @@
             "email": "contact@osw3.net"
         }
     ],
-    "minimum-stability": "dev",
     "require": {
         "php": "^7.1.3",
         "altorouter/altorouter": "^1.2",
@@ -30,5 +29,7 @@
         "files": [
             "src/Odyssey/globals.php"
         ]
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
 }
