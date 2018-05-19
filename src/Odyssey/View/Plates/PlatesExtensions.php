@@ -177,22 +177,6 @@ class PlatesExtensions implements ExtensionInterface
 			}
 
 		}
-
-		// --------------------------------------
-
-		// $file = str_replace('.php', '', $file);
-		// $file = __DIR__."/../../../app/Views/".$file;
-		// $file.= '.php';
-
-		// foreach ($params as $key => $param) {
-		// 	$$key = $param;
-		// }
-
-		// if ($once) {
-		// 	include_once $file;
-		// } else {
-		// 	include $file;
-		// }
 	}
 
 	public function getCurrentUser($field=null)

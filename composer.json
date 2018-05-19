@@ -1,5 +1,6 @@
 {
     "name": "osw3/odyssey-core-php",
+    "description": "",
     "type": "library",
     "keywords": ["framework"],
     "homepage": "https://odyssey.osw3.net",
