@@ -7,7 +7,6 @@ use League\Plates\Extension\ExtensionInterface;
 
 class PlatesExtensions implements ExtensionInterface
 {
-
 	/**
 	 * Enregistre les nouvelles fonctions dans Plates
      * @param \League\Plates\Engine $engine L'instance du moteur de template
@@ -26,7 +25,6 @@ class PlatesExtensions implements ExtensionInterface
 		$engine->registerFunction('isGranted', [$this, 'isGranted']);
 		$engine->registerFunction('jsRoutes', [$this, 'jsRoutes']);
 	}
-
 
 	/**
 	 * Relative path of an asset
@@ -140,19 +138,61 @@ class PlatesExtensions implements ExtensionInterface
 	 */
 	public function include($file, $params=array(), $once=false)
 	{
-		$file = str_replace('.php', '', $file);
-		$file = __DIR__."/../../../app/Views/".$file;
-		$file.= '.php';
+		if (!empty($file)) {
 
-		foreach ($params as $key => $param) {
-			$$key = $param;
+			$parts = explode(':', $file);
+	
+			// Component
+			$component = isset($parts[0]) ? $parts[0] : null;
+	
+			if (null != $component) {
+				$component = ucfirst(str_replace('Component', '', $component));
+				$component .= "Component";
+			}
+
+			// View Directory
+			$directory = isset($parts[1]) ? $parts[1] : null;
+
+
+			// View File
+			$file = isset($parts[2]) ? $parts[2] : null;
+
+			if (null != $file) {
+				$file = str_replace('.php', '', $file);
+				$file.= '.php';
+			}
+
+
+			// View
+			$view = (null != $directory) ? $directory.'/'.$file : $file;
+
+			if (null != $component) {
+				$view = './../src/'.$component.'/Views/'.$view;
+			}
+
+			if ($once) {
+				include_once $view;
+			} else {
+				include $view;
+			}
+
 		}
 
-		if ($once) {
-			include_once $file;
-		} else {
-			include $file;
-		}
+		// --------------------------------------
+
+		// $file = str_replace('.php', '', $file);
+		// $file = __DIR__."/../../../app/Views/".$file;
+		// $file.= '.php';
+
+		// foreach ($params as $key => $param) {
+		// 	$$key = $param;
+		// }
+
+		// if ($once) {
+		// 	include_once $file;
+		// } else {
+		// 	include $file;
+		// }
 	}
 
 	public function getCurrentUser($field=null)
