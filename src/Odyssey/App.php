@@ -4,7 +4,12 @@ namespace Odyssey;
 
 class App 
 {
+	const APP_DIR = './../app/';
+	const SRC_DIR = './../src/';
+	const WEB_DIR = './../web/';
+
 	protected $config;
+	protected $routes;
 	protected $router;
 	protected $basePath;
 
@@ -13,60 +18,47 @@ class App
 	 */
 	public function __construct()
 	{
-		global $config, $routes;
-
 		session_start();
 
-		$this->setConfig( $config );
-		$this->setRouting( $routes );
+		$this->setConfig();
+		$this->setRouting();
 
-		if ($this->getConfig('mode') === 'dev') 
+		if ('dev' === $this->getConfig('env')) 
 		{
 			error_reporting(E_ALL);
 			ini_set("display_errors", 1);
 		}
 	}
 
-	/**
-	 * Set the routing
-	 * 
-	 * @param array $routes 
-	 */
-	private function setRouting( $routes )
-	{
-		$ar_routes = array();
 
-		$this->router = new \AltoRouter();
-
-		foreach ($routes as $route) 
-		{
-			array_push($ar_routes, [
-				isset($route[3]) ? $route[3] : "GET",
-				isset($route[1]) ? $route[1] : null,
-				isset($route[2]) ? $route[2] : null,
-				isset($route[0]) ? $route[0] : null
-			]);
-		}
-
-		$this->basePath = (empty($_SERVER['BASE'])) ? '' : $_SERVER['BASE'];
-		$this->router->setBasePath($this->basePath);
-		$this->router->addRoutes($ar_routes);
-	}
-
+	// -- Config --------------------------------
+	
 	/**
 	 * Set the configuration
 	 * 
 	 * @param array $config 
 	 */
-	private function setConfig( $config )
+	private function setConfig()
 	{
-		$this->config = array_merge([
+		// Config directory
+		$dir = self::APP_DIR.'config/config/';
+
+		// Config files
+		$config_prod = $dir.'config.php';
+		$config_dev  = $dir.'config_dev.php';
+		$config_test = $dir.'config_test.php';
+
+		// New config is an empty array
+		$config = [];
+
+		// Define default config
+		$default = [
 			'db_host' => 'localhost',
 			'db_user' => 'root',
 			'db_pass' => '',
 			'db_name' => '',
 			'db_table_prefix' => '',
-			'env' => 'dev',
+
 			'security_user_table' => 'users',
 			'security_id_property' => 'id',
 			'security_username_property' => 'username',
@@ -74,8 +66,32 @@ class App
 			'security_password_property' => 'password',
 			'security_roles_property' => 'role',
 			'security_login_route_name' => 'login',
+
 			'site_name'	=> '',
-		], $config);
+			'env' => 'dev',
+
+			'routes' => [],
+		];
+
+		// Override default config
+		if (!file_exists($config_prod)) {
+			echo '<p>The configuration file is not found at <code>app/config/config/config.php</code>.</p>';
+			die();
+		}
+		include_once $config_prod;
+		$this->config = array_merge($default, $config);
+
+		// Override config for the environnement : dev
+		if (file_exists($config_dev)) {
+			include_once $config_dev;
+			$this->config = array_merge($this->config, $config);
+		}
+
+		// Override config for the environnement : test
+		if (file_exists($config_test)) {
+			include_once $config_test;
+			$this->config = array_merge($this->config, $config);
+		}
 	}
 
 	/**
@@ -84,43 +100,87 @@ class App
 	 * @param string $key The configuration key
 	 * @return mixed The configuration value
 	 */
-	public function getConfig($key)
+	public function getConfig( $key )
 	{
 		return (isset($this->config[$key])) ? $this->config[$key] : null;
 	}
 
+
+	// -- Routes --------------------------------
+
 	/**
-	 * Start the app
+	 * Set the routing
+	 * 
+	 * @param array $routes 
 	 */
-	public function run()
+	private function setRouting()
 	{
-		$matcher = new \Odyssey\Router\AltoRouter\Matcher($this->router);
-		$matcher->match();
+		// Routes directory
+		$dir = self::APP_DIR.'config/routes/';
+
+		// Instance of AltoRouter
+		$this->router = new \AltoRouter();
+
+		// Config files
+		$routes_file = $dir.'routes.php';
+
+		// Define routes
+		$this->routes = [];
+
+		// Add front routes
+		if (!file_exists($routes_file)) {
+			echo '<p>The routes file is not found at <code>app/config/routes/routes.php</code>.</p>';
+			die();
+		}
+		include_once $routes_file;
+		$this->routes = array_merge($this->routes, $routes);
+
+		// Add additionnal routes
+		if (is_array($this->getConfig('routes'))) {
+			foreach ($this->getConfig('routes') as $file) {
+				$file = $dir.$file.'.php';
+
+				if (file_exists($file)) {
+					include_once $file;
+					$this->routes = array_merge($this->routes, $routes);
+				}
+			}
+		}
+
+		// Parse and add routes for AlterRouter
+		$routes = [];
+		foreach ($this->routes as $route) 
+		{
+			array_push($routes, [
+				isset($route[3]) ? $route[3] : "GET",
+				isset($route[1]) ? $route[1] : null,
+				isset($route[2]) ? $route[2] : null,
+				isset($route[0]) ? $route[0] : null
+			]);
+		}
+		$this->basePath = (empty($_SERVER['BASE'])) ? '' : $_SERVER['BASE'];
+		$this->router->setBasePath($this->basePath);
+		$this->router->addRoutes($routes);
 	}
 
 	/**
 	 * Get the router
 	 * 
-	 * @return \AltoRouter Le routeur
+	 * @return \AltoRouter
 	 */
 	public function getRouter()
 	{
 		return $this->router;
 	}
 
+	/**
+	 * Get routes for JavaScript
+	 * 
+	 * @return array Array of routes
+	 */
 	public function jsRoutes()
 	{
-		global $routes;
-		return $routes;
-	}
-
-	/**
-	 * Retourne la base path
-	 * @return  string La base path
-	 */
-	public function getBasePath()
-	{
-		return $this->basePath;
+		return $this->routes;
 	}
 
 	/**
@@ -137,5 +197,27 @@ class App
 		else {
 			return false;
 		}
+	}
+
+
+	// -- Misc ----------------------------------
+
+	/**
+	 * Start the app
+	 */
+	public function run()
+	{
+		$matcher = new \Odyssey\Router\AltoRouter\Matcher($this->router);
+		$matcher->match();
+	}
+
+
+	/**
+	 * Retourne la base path
+	 * @return string La base path
+	 */
+	public function getBasePath()
+	{
+		return $this->basePath;
 	}
 }
