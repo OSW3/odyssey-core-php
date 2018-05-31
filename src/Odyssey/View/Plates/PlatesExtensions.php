@@ -170,6 +170,14 @@ class PlatesExtensions implements ExtensionInterface
 				$view = './../src/'.$component.'/Views/'.$view;
 			}
 
+
+			// Convert params
+			foreach ($params as $param => $value) {
+				$$param = $value;
+			}
+
+
+			// Include
 			if ($once) {
 				include_once $view;
 			} else {
