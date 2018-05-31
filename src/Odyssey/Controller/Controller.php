@@ -34,9 +34,20 @@ class Controller
 		return;
 	}
 
-	public static function getFlashbag()
+	public static function getFlashbag($asArray = false)
 	{
-		return isset($_SESSION['setFlashbag']) ? $_SESSION['setFlashbag'] : null;
+		$flashbag = null;
+
+		if (isset($_SESSION['setFlashbag'])) {
+
+			$flashbag = (object) $_SESSION['setFlashbag'];
+
+			if (!$asArray) {
+				$flashbag = (object) $flashbag;
+			}
+		}
+		
+		return $flashbag;
 	}
 
 	public function getConfig($key)

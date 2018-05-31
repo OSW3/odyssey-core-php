@@ -116,9 +116,9 @@ class PlatesExtensions implements ExtensionInterface
 	/**
 	 * Execute setFlashbag
 	 */
-	public function getFlashbag()
+	public function getFlashbag($asArray = false)
 	{
-		return \Odyssey\Controller\Controller::getFlashbag();
+		return \Odyssey\Controller\Controller::getFlashbag($asArray);
 	}
 
 	/**
