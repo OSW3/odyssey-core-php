@@ -17,12 +17,17 @@ abstract class Model
 	/** @var \PDO $dbh Connexion à la base de données */
 	protected $dbh;
 
+	private $app;
+	private $deepQuery = false;
+
 	/**
 	 * Constructeur
 	 */
 	public function __construct()
 	{
+		$this->app = getApp();
 		$this->setTableFromClassName();
+		$this->setQueryMode();
 		$this->dbh = ConnectionModel::getDbh();
 	}
 
@@ -32,8 +37,6 @@ abstract class Model
 	 */
 	private function setTableFromClassName()
 	{
-		$app = getApp();
-
 		if(empty($this->table)){
 			// Nom de la class enfant
 			$className = (new \ReflectionClass($this))->getShortName();
@@ -46,7 +49,7 @@ abstract class Model
 			$tableName = $this->table;
 		}
 
-		$this->table = $app->getConfig('db_table_prefix') . $tableName;
+		$this->table = $this->app->getConfig('db_table_prefix') . $tableName;
 
 		return $this;
 	}
@@ -60,6 +63,14 @@ abstract class Model
 	{
 		$this->table = $table;
 		return $this;
+	}
+
+	public function setQueryMode()
+	{
+		$query_mode = $this->app->getConfig('query_mode');
+		if ('normal' != $query_mode) {
+			$this->deepQuery = true;
+		}
 	}
 
 	/**
@@ -172,7 +183,6 @@ abstract class Model
 	 */
 	public function findAll($orderBy = '', $orderDir = 'ASC', $limit = null, $offset = null)
 	{
-
 		$sql = 'SELECT * FROM ' . $this->table;
 		if (!empty($orderBy)){
 
@@ -202,7 +212,11 @@ abstract class Model
 		$sth = $this->dbh->prepare($sql);
 		$sth->execute();
 
-		return $sth->fetchAll();
+		if ($this->deepQuery) {
+			return $this->deepQuery($sth->fetchAll());
+		} else {
+			return $sth->fetchAll();
+		}
 	}
 
 	/**
@@ -242,8 +256,13 @@ abstract class Model
 		}
 		if(!$sth->execute()){
 			return false;
+		}		
+
+		if ($this->deepQuery) {
+			return $this->deepQuery($sth->fetchAll());
+		} else {
+			return $sth->fetchAll();
 		}
-        return $sth->fetchAll();
 	}
 
 	/**
@@ -269,8 +288,9 @@ abstract class Model
 	 * @param boolean $stripTags Active le strip_tags automatique sur toutes les valeurs
 	 * @return mixed false si erreur, les données insérées mise à jour sinon
 	 */
-	public function insert(array $data, $stripTags = true)
+	public function insert($data, $stripTags = true)
 	{
+		$data = (array) $data;
 
 		$colNames = array_keys($data);
 		$colNamesEscapes = $this->escapeKeys($colNames);
@@ -310,8 +330,10 @@ abstract class Model
 	 * @param boolean $stripTags Active le strip_tags automatique sur toutes les valeurs
 	 * @return mixed false si erreur, les données mises à jour sinon
 	 */
-	public function update(array $data, $id, $stripTags = true)
+	public function update($data, $id, $stripTags = true)
 	{
+		$data = (array) $data;
+
 		if (!is_numeric($id)){
 			return false;
 		}
@@ -364,7 +386,6 @@ abstract class Model
 		return $sth->fetch();
 	}
 
-
 	/**
 	 * Récupère toutes les lignes de la table en fonction d'une colonne et sa valeur
 	 * @param $column La colonne
@@ -414,7 +435,6 @@ abstract class Model
 		return $sth->fetchAll();
 	}
 
-
 	/**
 	 * Retourne l'identifiant de la dernière ligne insérée
 	 * @return int L'identifiant
@@ -434,5 +454,27 @@ abstract class Model
 		return array_map(function($val){
 			return '`'.$val.'`';
 		}, $datas);
-	}	
+	}
+
+	private function deepQuery($data)
+	{
+        foreach ($data as $index => $item) {
+            foreach ($item as $key => $value) {
+                $re = "/_id$/i";
+                if (preg_match($re, $key)) {
+
+                    $table = preg_replace($re, "", $key);
+                    if (null != $value) {
+                        $this->settable($table.'s');
+                        $data[$index]->$table = $this->find($value);;
+                    } else {
+                        $data[$index]->$table = null;
+                    }
+
+                }
+            }
+        }
+
+		return $data;
+	}
 }
