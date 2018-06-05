@@ -17,31 +17,25 @@ abstract class Model
 	/** @var \PDO $dbh Connexion à la base de données */
 	protected $dbh;
 
-	private $app;
-	private $deepQuery = false;
-
 	/**
-	 * Constructeur
+	 * Constructor
 	 */
 	public function __construct()
 	{
-		$this->app = getApp();
 		$this->setTableFromClassName();
-		$this->setQueryMode();
 		$this->dbh = ConnectionModel::getDbh();
 	}
 
 	/**
-	 * Déduit le nom de la table en fonction du nom du modèle enfant
+	 * Define the name of the table
 	 * @return Odyssey\Model $this
 	 */
 	private function setTableFromClassName()
 	{
-		if(empty($this->table)){
-			// Nom de la class enfant
-			$className = (new \ReflectionClass($this))->getShortName();
+		$app = getApp();
 
-			// Retire le Model et converti en underscore_case (snake_case)
+		if(empty($this->table)){
+			$className = (new \ReflectionClass($this))->getShortName();
 			$tableName = str_replace('Model', '', $className);
 			$tableName = ltrim(strtolower(preg_replace('/[A-Z]/', '_$0', $tableName)), '_');
 		}
@@ -49,33 +43,26 @@ abstract class Model
 			$tableName = $this->table;
 		}
 
-		$this->table = $this->app->getConfig('db_table_prefix') . $tableName;
+		$this->table = $app->getConfig('db_table_prefix') . $tableName;
 
 		return $this;
 	}
 
 	/**
-	 * Définit le nom de la table (si le nom déduit ne convient pas)
+	 * Redefine the name of the table 
 	 * @param string $table Nom de la table
 	 * @return Odyssey\Model $this
 	 */
 	public function setTable($table)
 	{
 		$this->table = $table;
+
 		return $this;
 	}
 
-	public function setQueryMode()
-	{
-		$query_mode = $this->app->getConfig('query_mode');
-		if ('normal' != $query_mode) {
-			$this->deepQuery = true;
-		}
-	}
-
 	/**
-	 * Retourne le nom de la table associée à ce gestionnaire
-	 * @return string Le nom de la table
+	 * Get the table name
+	 * @return string
 	 */
 	public function getTable()
 	{
@@ -90,6 +77,7 @@ abstract class Model
 	public function setPrimaryKey($primaryKey)
 	{
 		$this->primaryKey = $primaryKey;
+
 		return $this;
 	}
 
@@ -102,34 +90,41 @@ abstract class Model
 		return $this->primaryKey;
 	}
 
+
+
 	/**
-	 * Récupère une ligne de la table en fonction d'un identifiant
-	 * @param  integer Identifiant
-	 * @return mixed Les données sous forme de tableau associatif
+	 * Retrieve an item by his ID
+     * @param integer id
+     * @param boolean deepQuery
+	 * @return mixed Query results
 	 */
-	public function find($id)
+	public function find($params = array())
 	{
-		if (!is_numeric($id)){
-			return false;
-		}
+		$id = $this->setId($params);
+		$deepQuery = $this->setDeepQuery($params);
 
 		$sql = 'SELECT * FROM ' . $this->table . ' WHERE ' . $this->primaryKey .'  = :id LIMIT 1';
 		$sth = $this->dbh->prepare($sql);
 		$sth->bindValue(':id', $id);
 		$sth->execute();
 
-		return $sth->fetch();
+		if ($deepQuery) {
+			return $this->deepQuery($sth->fetch());
+		} else {
+			return $sth->fetch();
+		}
 	}
 
     /**
-     * Récupère la ligne suivante de celle de l'identifiant
-     * @param integer Identifiant
-     * @return mixed Les données sous forme de tableau associatif
+     * Retrieve next item of an ID
+     * @param integer id
+     * @param boolean deepQuery
+     * @return mixed Query results
      */
-    public function findNext($id){
-        if (!is_numeric($id)){
-            return false;
-        }
+	public function findNext($params = array())
+	{
+		$id = $this->setId($params);
+		$deepQuery = $this->setDeepQuery($params);
 
         $sql = 'SELECT * FROM ' . $this->table . ' WHERE ' . $this->primaryKey .'  = (SELECT MIN(id) FROM ' . $this->table . ' WHERE id > :id ) LIMIT 1';
         $sth = $this->dbh->prepare($sql);
@@ -144,18 +139,23 @@ abstract class Model
             $result = $sth->fetch();
         }
 
-        return $result;
+		if ($deepQuery) {
+			return $this->deepQuery($result);
+		} else {
+			return $result;
+		}
     }
 
     /**
-     * Récupère la ligne précédente de celle de l'identifiant
-     * @param integer Identifiant
-     * @return mixed Les données sous forme de tableau associatif
+     * Retrieve previous item of an ID
+     * @param integer id
+     * @param boolean deepQuery
+     * @return mixed Query results
      */
-    public function findPrevious($id){
-        if (!is_numeric($id)){
-            return false;
-        }
+	public function findPrevious($params = array())
+	{
+		$id = $this->setId($params);
+		$deepQuery = $this->setDeepQuery($params);
 
         $sql = 'SELECT * FROM ' . $this->table . ' WHERE ' . $this->primaryKey .'  = (SELECT MAX(id) FROM ' . $this->table . ' WHERE id < :id ) LIMIT 1';
         $sth = $this->dbh->prepare($sql);
@@ -170,7 +170,11 @@ abstract class Model
             $result = $sth->fetch();
         }
 
-        return $result;
+		if ($deepQuery) {
+			return $this->deepQuery($result);
+		} else {
+			return $result;
+		}
     }
 
 	/**
@@ -179,40 +183,109 @@ abstract class Model
 	 * @param $orderDir La direction du tri, ASC ou DESC
 	 * @param $limit Le nombre maximum de résultat à récupérer
 	 * @param $offset La position à partir de laquelle récupérer les résultats
-	 * @return array Les données sous forme de tableau multidimensionnel
+     * @param boolean deepQuery
+	 * @return array Query results
 	 */
-	public function findAll($orderBy = '', $orderDir = 'ASC', $limit = null, $offset = null)
+	public function findAll($params = array())
 	{
+		$orderBy  	= $this->setOrderBy($params);
+		$orderDir 	= $this->setOrderDir($params);
+		$limit 	  	= $this->setLimit($params);
+		$offset   	= $this->setOffset($params);
+		$deepQuery	= $this->setDeepQuery($params);
+		
 		$sql = 'SELECT * FROM ' . $this->table;
-		if (!empty($orderBy)){
 
-			//sécurisation des paramètres, pour éviter les injections SQL
-			if(!preg_match('#^[a-zA-Z0-9_$]+$#', $orderBy)){
-				die('Error: invalid orderBy param');
-			}
-			$orderDir = strtoupper($orderDir);
-			if($orderDir != 'ASC' && $orderDir != 'DESC'){
-				die('Error: invalid orderDir param');
-			}
-			if ($limit && !is_int($limit)){
-				die('Error: invalid limit param');
-			}
-			if ($offset && !is_int($offset)){
-				die('Error: invalid offset param');
-			}
-
+		if (!empty($orderBy))
+		{
 			$sql .= ' ORDER BY '.$orderBy.' '.$orderDir;
 		}
-		if($limit){
+
+		if($limit)
+		{
 			$sql .= ' LIMIT '.$limit;
-			if($offset){
+			if($offset)
+			{
 				$sql .= ' OFFSET '.$offset;
 			}
 		}
+
 		$sth = $this->dbh->prepare($sql);
 		$sth->execute();
 
-		if ($this->deepQuery) {
+		if ($deepQuery) {
+			return $this->deepQuery($sth->fetchAll());
+		} else {
+			return $sth->fetchAll();
+		}
+	}
+
+	/**
+	 * Retrieve an item by a specific column name
+	 * @param string $column La colonne
+	 * @param string $value La valeur à rechercher
+     * @param boolean deepQuery
+	 * @return array Query results
+	 */
+	public function findBy($params = array())
+	{
+		$column = $this->setColumn($params);
+		$value = $this->setValue($params);
+		$deepQuery = $this->setDeepQuery($params);
+
+		$sql = 'SELECT * FROM ' . $this->table . ' WHERE `' . $column . '` = :value LIMIT 1';
+		$sth = $this->dbh->prepare($sql);
+		$sth->bindValue(':value', $value);
+		$sth->execute();
+
+		if ($deepQuery) {
+			return $this->deepQuery($sth->fetch());
+		} else {
+			return $sth->fetch();
+		}
+	}
+
+	/**
+	 * Récupère toutes les lignes de la table en fonction d'une colonne et sa valeur
+	 * @param $column La colonne
+	 * @param $value La valeur à rechercher	 
+	 * @param $orderBy La colonne en fonction de laquelle trier
+	 * @param $orderDir La direction du tri, ASC ou DESC
+	 * @param $limit Le nombre maximum de résultat à récupérer
+	 * @param $offset La position à partir de laquelle récupérer les résultats
+     * @param boolean deepQuery
+	 * @return array Query results
+	 */
+	public function findAllBy($params = array())
+	{
+		$column 	= $this->setColumn($params);
+		$value 		= $this->setValue($params);
+		$orderBy  	= $this->setOrderBy($params);
+		$orderDir 	= $this->setOrderDir($params);
+		$limit 	  	= $this->setLimit($params);
+		$offset   	= $this->setOffset($params);
+		$deepQuery	= $this->setDeepQuery($params);
+
+		$sql = 'SELECT * FROM ' . $this->table. ' WHERE `' . $column . '` = :value';
+
+		if (!empty($orderBy))
+		{
+			$sql.= ' ORDER BY '.$orderBy.' '.$orderDir;
+		}
+
+		if($limit){
+			$sql.= ' LIMIT '.$limit;
+			if($offset)
+			{
+				$sql.= ' OFFSET '.$offset;
+			}
+		}
+
+		$sth = $this->dbh->prepare($sql);
+		$sth->bindValue(':value', $value);
+		$sth->execute();
+
+		if ($deepQuery) {
 			return $this->deepQuery($sth->fetchAll());
 		} else {
 			return $sth->fetchAll();
@@ -226,13 +299,10 @@ abstract class Model
 	 * @param boolean $stripTags Active le strip_tags automatique sur toutes les valeurs
 	 * @return mixed false si erreur, le résultat de la recherche sinon
 	 */
-	public function search(array $search, $operator = 'OR', $stripTags = true){
-
-		// Sécurisation de l'opérateur
-		$operator = strtoupper($operator);
-		if($operator != 'OR' && $operator != 'AND'){
-			die('Error: invalid operator param');
-		}
+	public function search(array $search, $params = array())
+	{
+		$operator = $this->setOperator($params);
+		$stripTags = $this->setStripTags($params);
 
         $sql = 'SELECT * FROM ' . $this->table.' WHERE';
                 
@@ -240,7 +310,7 @@ abstract class Model
 			$sql .= " `$key` LIKE :$key ";
 			$sql .= $operator;
 		}
-		// Supprime les caractères superflus en fin de requète
+		
 		if($operator == 'OR') {
 			$sql = substr($sql, 0, -3);
 		}
@@ -258,12 +328,13 @@ abstract class Model
 			return false;
 		}		
 
-		if ($this->deepQuery) {
+		if ($deepQuery) {
 			return $this->deepQuery($sth->fetchAll());
 		} else {
 			return $sth->fetchAll();
 		}
 	}
+
 
 	/**
 	 * Efface une ligne en fonction de son identifiant
@@ -320,7 +391,11 @@ abstract class Model
 		if (!$sth->execute()){
 			return false;
 		}
-		return $this->find($this->lastInsertId());
+
+		return $this->find([
+			"id" => $this->lastInsertId(),
+			"deepQuery" => false
+		]);
 	}
 
 	/**
@@ -363,76 +438,11 @@ abstract class Model
 		if(!$sth->execute()){
 			return false;
 		}
-		return $this->find($id);
-	}
 
-	/**
-	 * Récupère une ligne de la table en fonction d'une colonne et sa valeur
-	 * @param  string $column La colonne
-	 * @param  string $value La valeur à rechercher
-	 * @return mixed Les données sous forme de tableau associatif
-	 */
-	public function findBy($column = '', $value = '')
-	{
-		if(empty($column)){
-			return false;
-		}
-
-		$sql = 'SELECT * FROM ' . $this->table . ' WHERE `' . $column . '` = :value LIMIT 1';
-		$sth = $this->dbh->prepare($sql);
-		$sth->bindValue(':value', $value);
-		$sth->execute();
-
-		return $sth->fetch();
-	}
-
-	/**
-	 * Récupère toutes les lignes de la table en fonction d'une colonne et sa valeur
-	 * @param $column La colonne
-	 * @param $value La valeur à rechercher	 
-	 * @param $orderBy La colonne en fonction de laquelle trier
-	 * @param $orderDir La direction du tri, ASC ou DESC
-	 * @param $limit Le nombre maximum de résultat à récupérer
-	 * @param $offset La position à partir de laquelle récupérer les résultats
-	 * @return array Les données sous forme de tableau multidimensionnel
-	 */
-	public function findAllBy($column = '', $value = '', $orderBy = '', $orderDir = 'ASC', $limit = null, $offset = null)
-	{
-		if(empty($column)){
-			return false;
-		}
-
-		$sql = 'SELECT * FROM ' . $this->table. ' WHERE `' . $column . '` = :value';
-		if (!empty($orderBy)){
-
-			//sécurisation des paramètres, pour éviter les injections SQL
-			if(!preg_match('#^[a-zA-Z0-9_$]+$#', $orderBy)){
-				die('Error: invalid orderBy param');
-			}
-			$orderDir = strtoupper($orderDir);
-			if($orderDir != 'ASC' && $orderDir != 'DESC'){
-				die('Error: invalid orderDir param');
-			}
-			if ($limit && !is_int($limit)){
-				die('Error: invalid limit param');
-			}
-			if ($offset && !is_int($offset)){
-				die('Error: invalid offset param');
-			}
-
-			$sql.= ' ORDER BY '.$orderBy.' '.$orderDir;
-		}
-		if($limit){
-			$sql.= ' LIMIT '.$limit;
-			if($offset){
-				$sql.= ' OFFSET '.$offset;
-			}
-		}
-		$sth = $this->dbh->prepare($sql);
-		$sth->bindValue(':value', $value);
-		$sth->execute();
-
-		return $sth->fetchAll();
+		return $this->find([
+			"id" => $id,
+			"deepQuery" => false
+		]);
 	}
 
 	/**
@@ -458,23 +468,180 @@ abstract class Model
 
 	private function deepQuery($data)
 	{
-        foreach ($data as $index => $item) {
-            foreach ($item as $key => $value) {
-                $re = "/_id$/i";
-                if (preg_match($re, $key)) {
+		$return_array = true;
+		$oldTable = $this->getTable();
 
-                    $table = preg_replace($re, "", $key);
-                    if (null != $value) {
-                        $this->settable($table.'s');
-                        $data[$index]->$table = $this->find($value);;
-                    } else {
-                        $data[$index]->$table = null;
-                    }
+		if (!is_array($data) ) {
+			$data = [$data];
+			$return_array = false;
+		}
 
-                }
-            }
-        }
+		foreach ($data as $index => $item) {
+			foreach ($item as $key => $value) {
+				$re = "/_id$/i";
+				if (preg_match($re, $key)) {
+					$table = preg_replace($re, "", $key);
+					if (null != $value) {
+						$this->settable($table.'s');
+						$data[$index]->$table = $this->find($value);;
+					} else {
+						$data[$index]->$table = null;
+					}
 
-		return $data;
+					unset($item->$key);
+				}
+			}
+		}
+
+		$this->setTable($oldTable);
+		return $return_array ? $data : $data[0];
+	}
+
+
+	// Set Parameters
+
+	private function setId($params)
+	{
+		$id = null;
+
+		if (!is_array($params)) {
+			$params = ["id" => $params];
+		}
+
+		if (isset($params['id'])) {
+			$id = $params['id'];
+		}
+
+		if (!is_numeric($id)){
+			return false;
+		}
+
+		return $id;
+	}
+	private function setColumn($params)
+	{
+		$column = '';
+
+		if (isset($params['column'])) {
+			$column = $params['column'];
+		}
+
+		if(empty($column)){
+			return false;
+		}
+
+		return $column;
+	}
+	private function setValue($params)
+	{
+		$value = '';
+
+		if (isset($params['value'])) {
+			$value = $params['value'];
+		}
+
+		return $value;
+	}
+	private function setOrderBy($params)
+	{
+		$orderBy = '';
+
+		if (isset($params['orderBy'])) {
+			$orderBy = $params['orderBy'];
+			
+			if(!preg_match('#^[a-zA-Z0-9_$]+$#', $orderBy)) {
+				die('Error: invalid orderBy param');
+			}
+		}
+
+		return $orderBy;
+	}
+	private function setOrderDir($params)
+	{
+		$orderDir = 'ASC';
+
+		if (isset($params['orderDir'])) {
+			$orderDir = $params['orderDir'];
+		}
+
+		$orderDir = strtoupper($orderDir);
+
+		if($orderDir != 'ASC' && $orderDir != 'DESC'){
+			die('Error: invalid orderDir param');
+		}
+
+		return $orderDir;
+	}
+	private function setLimit($params)
+	{
+		$limit = null;
+
+		if (isset($params['limit'])) {
+			$limit = $params['limit'];
+		}
+		
+		if ($limit && !is_int($limit)){
+			die('Error: invalid limit param');
+		}
+		
+		return $limit;
+	}
+	private function setOffset($params)
+	{
+		$offset = null;
+
+		if (isset($params['offset'])) {
+			$offset = $params['offset'];
+		}
+		
+		if ($offset && !is_int($offset)){
+			die('Error: invalid offset param');
+		}
+
+		return $offset;
+	}
+	private function setDeepQuery($params)
+	{
+		$deepQuery = true;
+
+		if (isset($params['deepQuery'])) {
+			$deepQuery = $params['deepQuery'];
+		}
+
+		if($deepQuery !== true && $deepQuery !== false){
+			die('Error: invalid deepQuery param');
+		}
+
+		return $deepQuery;
+	}
+	private function setOperator($params)
+	{
+		$operator = 'OR';
+
+		if (isset($params['operator'])) {
+			$operator = $params['operator'];
+		}
+
+		$operator = strtoupper($operator);
+
+		if($operator != 'OR' && $operator != 'AND'){
+			die('Error: invalid operator param');
+		}
+
+		return $operator;
+	}
+	private function setStripTags($params)
+	{
+		$stripTags = true;
+
+		if (isset($params['stripTags'])) {
+			$stripTags = $params['stripTags'];
+		}
+
+		if($stripTags !== true && $stripTags !== false){
+			die('Error: invalid stripTags param');
+		}
+
+		return $stripTags;
 	}
 }
