@@ -399,6 +399,29 @@ abstract class Model
 	}
 
 	/**
+	 * Insert data if row don't exist
+	 * @param array $input Un tableau associatif de valeurs à insérer
+	 * @param array $onColumn Check if data exist with a specific column
+	 * @param boolean $stripTags Active le strip_tags automatique sur toutes les valeurs
+	 * @return mixed false si erreur, les données insérées mise à jour sinon
+	 */
+	public function smartInsert($input, $onColumn, $stripTags = true)
+	{
+		// Check if data exists
+		$data = $this->findBy([
+			"column" => $onColumn,
+			"value" => $input->$onColumn
+		]);
+
+		// Insert if not exists
+		if (!$data) {
+			$data = $this->insert($input, $stripTags);
+		}
+
+		return $data;
+	}
+
+	/**
 	 * Modifie une ligne en fonction d'un identifiant
 	 * @param array $data Un tableau associatif de valeurs à insérer
 	 * @param mixed $id L'identifiant de la ligne à modifier
@@ -477,18 +500,20 @@ abstract class Model
 		}
 
 		foreach ($data as $index => $item) {
-			foreach ($item as $key => $value) {
-				$re = "/_id$/i";
-				if (preg_match($re, $key)) {
-					$table = preg_replace($re, "", $key);
-					if (null != $value) {
-						$this->settable($table.'s');
-						$data[$index]->$table = $this->find($value);;
-					} else {
-						$data[$index]->$table = null;
+			if (is_object($item)) {
+				foreach ($item as $key => $value) {
+					$re = "/_id$/i";
+					if (preg_match($re, $key)) {
+						$table = preg_replace($re, "", $key);
+						if (null != $value) {
+							$this->settable($table.'s');
+							$data[$index]->$table = $this->find($value);;
+						} else {
+							$data[$index]->$table = null;
+						}
+	
+						unset($item->$key);
 					}
-
-					unset($item->$key);
 				}
 			}
 		}
