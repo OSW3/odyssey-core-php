@@ -31,7 +31,7 @@ class AuthorizationModel
 			$this->redirectToLogin();
 		}
 
-		if (!empty($loggedUser[$rolesProperty]) && in_array($loggedUser[$rolesProperty], $roles)){
+		if (!empty($loggedUser->$rolesProperty) && in_array($loggedUser->$rolesProperty, $roles)){
 			return true;
 		}
 

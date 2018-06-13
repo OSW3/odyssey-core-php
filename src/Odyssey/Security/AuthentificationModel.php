@@ -20,16 +20,20 @@ class AuthentificationModel
 	{
 
 		$app = getApp();
+		$securityPasswordProperty = $app->getConfig('security_password_property');
+		$securityIdProperty = $app->getConfig('security_id_property');
 
 		$usersModel = new UsersModel();
 		$email = strip_tags(trim($email));
 		$foundUser = $usersModel->findByEmail($email);
+
+
 		if(!$foundUser){
 			return 0;
 		}
 
-		if(password_verify($plainPassword, $foundUser[$app->getConfig('security_password_property')])){
-			return (int) $foundUser[$app->getConfig('security_id_property')];
+		if(password_verify($plainPassword, $foundUser->securityPasswordProperty)){
+			return (int) $foundUser->securityIdProperty;
 		}
 
 		return 0;
